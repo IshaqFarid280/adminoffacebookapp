@@ -324,6 +324,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
   }
+  Future<void> _deletePost(String postId) async {
+    final accessToken = await FacebookAuth.instance.accessToken;
+    if (accessToken != null) {
+      final pageAccessToken = await _getPageAccessToken(_userPages![0]['id']);
+      if (pageAccessToken != null) {
+        final deleteUrl = Uri.parse('https://graph.facebook.com/v20.0/$postId');
+        final graphResponse = await http.delete(
+          deleteUrl,
+          headers: {
+            'Authorization': 'Bearer $pageAccessToken',
+            'Accept': 'application/json',
+          },
+        );
+
+        if (graphResponse.statusCode == 200) {
+          print('Post deleted successfully');
+          setState(() {
+            _allPageFeeds.removeWhere((post) => post['id'] == postId);
+          });
+        } else {
+          print('Failed to delete post: ${graphResponse.body}');
+        }
+      }
+    }
+  }
 
   String _formatDateTime(String dateTimeString) {
     final dateTime = DateTime.parse(dateTimeString).toLocal();
@@ -337,7 +362,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         backgroundColor: primaryTextColor,
         title: largeText(
-          title: 'Dashboard',
+          title: 'Admin Dashboard',
         ),
         actions: [
           IconButton(
@@ -347,80 +372,131 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       body: _loadingPages || _loadingFeed
-          ? Center(child: CircularProgressIndicator())
-          : ListView.builder(
-        controller: _scrollController,
-        itemCount: _allPageFeeds.length + (_loadingMore ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index == _allPageFeeds.length) {
-            return Center(child: CircularProgressIndicator());
-          }
+          ? Center(child: CircularProgressIndicator(color: secondaryColor2,))
+          : RefreshIndicator(
+        onRefresh: _fetchUserPages,
+            child: ListView.builder(
+                    controller: _scrollController,
+                    itemCount: _allPageFeeds.length + (_loadingMore ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == _allPageFeeds.length) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 20.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
 
-          final post = _allPageFeeds[index];
-          final String formattedDateTime =
-          _formatDateTime(post['created_time']);
+                final post = _allPageFeeds[index];
+                final commentsCount = post['comments']?['summary']?['total_count'] ?? 0;
+                final likesCount = post['likes']?['summary']?['total_count'] ?? 0;
+                final sharesCount = post['shares']?['count'] ?? 0;
 
-          return Card(
-            color: secondaryTextColor,
-            elevation: 2.0,
-            margin: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-            child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  post['full_picture'] != null
-                      ? Image.network(post['full_picture'])
-                      : SizedBox(),
-                  SizedBox(height: 10),
-                  post['message'] != null
-                      ? mediumText(
-                    title: post['message'],
-                    fontSize: 14.0,
-                  )
-                      : SizedBox(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      largeText(
-                          title: formattedDateTime,
-                          fontSize: 12.0,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey
-                      ),
-                    ],
+                return Card(
+                  color: secondaryTextColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
                   ),
-
-                  SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Icon(Icons.thumb_up, size: 16.0, color: Colors.grey),
-                      SizedBox(width: 4.0),
-                      mediumText(
-                        title: post['likes']?['summary']?['total_count']
-                            ?.toString() ??
-                            '0',
-                        fontSize: 14.0,
-                      ),
-                      SizedBox(width: 16.0),
-                      Icon(Icons.share, size: 16.0, color: Colors.grey),
-                      SizedBox(width: 4.0),
-                      mediumText(
-                        title:
-                        post['shares']?['count']?.toString() ?? '0',
-                        fontSize: 14.0,
-                      ),
-                    ],
+                  child: Padding(
+                    padding: const EdgeInsets.all(5.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Stack(
+                          children: [
+                            post['full_picture'] != null
+                                ? Container(
+                              clipBehavior: Clip.antiAlias,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                image: DecorationImage(
+                                    image: NetworkImage(post['full_picture']),
+                                    fit: BoxFit.contain),
+                              ),
+                              child: Image.network(post['full_picture']),
+                            )
+                                : const Center(
+                              child: Icon(
+                                Icons.error_outline,
+                                color: Colors.black,
+                              ),
+                            ),
+                            // Positioned(
+                            //   top: 8,
+                            //   right: 8,
+                            //   child: DropdownButtonHideUnderline(
+                            //     child: DropdownButton<String>(
+                            //       icon: Icon(Icons.more_vert, color: Colors.white),
+                            //       items: <String>['Delete'].map((String value) {
+                            //         return DropdownMenuItem<String>(
+                            //           value: value,
+                            //           child: Text(value),
+                            //         );
+                            //       }).toList(),
+                            //       onChanged: (String? value) {
+                            //         if (value == 'Delete') {
+                            //           _deletePost(post['id']);
+                            //         }
+                            //       },
+                            //     ),
+                            //   ),
+                            // ),
+                          ],
+                        ),
+                        Divider(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Expanded(
+                              child: smallText(title: post['message'] ?? 'No message'),
+                            ),
+                            smallText(title: _formatDateTime(post['created_time'])),
+                          ],
+                        ),
+                        Divider(color: listTileLeadingColor),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  CustomIcon(iconData: Icons.thumb_up),
+                                  Sized(),
+                                  smallText(title: likesCount.toString(), fontSize: 16.0),
+                                  Sized(),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  CustomIcon(iconData: Icons.messenger_outlined),
+                                  Sized(),
+                                  smallText(title: commentsCount.toString(), fontSize: 16.0),
+                                  Sized(),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  CustomIcon(iconData: Icons.share_sharp),
+                                  Sized(),
+                                  smallText(title: sharesCount.toString(), fontSize: 16.0),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Sized(),
+                      ],
+                    ),
                   ),
-                  SizedBox(height: 10),
-                  Divider(),
-                  ..._buildComments(post['comments']),
-                ],
-              ),
+                );
+              },
+
             ),
-          );
-        },
-      ),
+          ),
       floatingActionButton: CustomFloatingAction(
         onTap: () {
           _showPostDialog(context);

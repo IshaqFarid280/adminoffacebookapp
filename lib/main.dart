@@ -15,7 +15,7 @@ class MyApp extends StatelessWidget {
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
           backgroundColor: primaryTextColor,
         ),
-        appBarTheme: const AppBarTheme(
+        appBarTheme:  AppBarTheme(
           centerTitle: true,
           color: primaryTextColor,
         ),
@@ -56,13 +56,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   _login() async {
-    final result = await FacebookAuth.instance.login(permissions: ['email', 'pages_show_list']);
-
+    final LoginResult result = await FacebookAuth.instance.login(
+      permissions: ['public_profile', 'email', 'pages_manage_posts', 'pages_read_engagement'],
+    );
     if (result.status == LoginStatus.success) {
       setState(() {
         _accessToken = result.accessToken;
       });
-      // Save login details (if needed)
     } else {
       print('Failed to login: ${result.message}');
     }
